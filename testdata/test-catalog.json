@@ -1,0 +1,42 @@
+[
+  {
+    "id": "unit-payment-policy",
+    "level": "unit",
+    "estimatedMinutes": 3,
+    "componentKeywords": ["payment", "authorization"],
+    "coversRiskTags": ["authorization", "financial-integrity"],
+    "rationale": "Fast validation of authorization rules and amount boundaries."
+  },
+  {
+    "id": "api-payment-authorization-contract",
+    "level": "api",
+    "estimatedMinutes": 7,
+    "componentKeywords": ["payment", "authorization"],
+    "coversRiskTags": ["authorization", "financial-integrity"],
+    "rationale": "Validates authorization responses and contract-level error behavior."
+  },
+  {
+    "id": "e2e-checkout-validation",
+    "level": "e2e",
+    "estimatedMinutes": 9,
+    "componentKeywords": ["checkout", "form"],
+    "coversRiskTags": ["input-validation"],
+    "rationale": "Checks the critical checkout validation journey in a browser."
+  },
+  {
+    "id": "a11y-checkout-form",
+    "level": "accessibility",
+    "estimatedMinutes": 4,
+    "componentKeywords": ["checkout", "form"],
+    "coversRiskTags": ["accessibility"],
+    "rationale": "Checks keyboard and automated accessibility assertions for the form."
+  },
+  {
+    "id": "performance-payment-baseline",
+    "level": "performance",
+    "estimatedMinutes": 20,
+    "componentKeywords": ["payment"],
+    "coversRiskTags": ["financial-integrity"],
+    "rationale": "Optional local baseline; intentionally excluded by the sample constraint."
+  }
+]

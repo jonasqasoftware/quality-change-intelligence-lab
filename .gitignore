@@ -1,0 +1,9 @@
+# Build output
+bin/
+coverage.out
+
+# Generated reports
+reports/
+
+# Local environment files
+.env

@@ -1,0 +1,25 @@
+{
+  "id": "DEMO-CHG-042",
+  "summary": "Strengthen payment authorization handling and update checkout validation",
+  "source": "synthetic laboratory fixture — not production evidence",
+  "components": [
+    {
+      "name": "payment authorization",
+      "path": "services/payments/authorization.go",
+      "criticality": "high",
+      "changeType": "logic",
+      "riskTags": ["authorization", "financial-integrity"]
+    },
+    {
+      "name": "checkout form",
+      "path": "web/checkout/form.ts",
+      "criticality": "medium",
+      "changeType": "ui",
+      "riskTags": ["input-validation", "accessibility"]
+    }
+  ],
+  "constraints": {
+    "maxEstimatedMinutes": 18,
+    "allowedLevels": ["unit", "api", "e2e", "accessibility"]
+  }
+}
