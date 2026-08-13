@@ -12,14 +12,14 @@ Quality Change Intelligence Lab is a local planning tool that turns an explicit 
 | --- | --- | --- |
 | Hidden prioritization rules | Teams cannot challenge a black-box recommendation. | Criticality and change-type weights are visible in code and documented. |
 | Incorrect catalog mapping | A test can be selected for the wrong component or risk. | Matching requires both a component keyword and an exact risk tag. |
-| Budget hides material risk | A short test window can defer an important check. | Deferred risks are emitted with an explicit reason. |
+| Budget hides material risk | A short test window can defer an important check. | Exact maximum-risk selection is used for small catalogs; deferred risks are emitted with an explicit reason. |
 | Planning treated as proof | A selected test is mistaken for a passing result. | Every report states its evidence boundary and residual risk. |
 
 ## Strategy and test levels
 
 | Level | Purpose | Evidence produced |
 | --- | --- | --- |
-| Unit | Validate weight, matching, sorting, budget, and residual-risk rules. | Deterministic Go test results. |
+| Unit | Validate weight, matching, exact-combination selection, budget, fallback behavior, and residual-risk rules. | Deterministic Go test results. |
 | Integration | Load strict JSON input and render Markdown/JSON reports through the CLI boundary. | CLI output from synthetic fixtures. |
 | Workflow | Format, vet, race-test, build, generate a sample report, and upload it as a CI artifact. | A GitHub Actions artifact tied to a workflow run. |
 
@@ -32,7 +32,7 @@ A recommendation is selected only when it:
 3. adds previously uncovered risk; and
 4. fits within the supplied time budget.
 
-Candidates are ordered by uncovered risk score per estimated minute. Ties favor greater uncovered risk score, then stable test ID ordering. The scoring model is a transparent heuristic for discussion, not a universal release formula.
+For up to 20 mapped candidates, the tool evaluates every valid combination and selects the highest total mapped risk score. Ties favor the lower estimated duration, then stable test ID ordering. Larger catalogs use a labelled deterministic greedy fallback based on currently uncovered risk score per estimated minute. The scoring model is a transparent heuristic for discussion, not a universal release formula.
 
 ## Residual risks and limits
 

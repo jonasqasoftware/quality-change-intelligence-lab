@@ -64,6 +64,8 @@ type Assessment struct {
 	Source                string           `json:"source"`
 	BudgetMinutes         int              `json:"budgetMinutes"`
 	SelectedMinutes       int              `json:"selectedMinutes"`
+	SelectionMethod       string           `json:"selectionMethod"`
+	SelectionNote         string           `json:"selectionNote"`
 	Risks                 []Risk           `json:"risks"`
 	Recommendations       []Recommendation `json:"recommendations"`
 	DeferredRisks         []DeferredRisk   `json:"deferredRisks"`

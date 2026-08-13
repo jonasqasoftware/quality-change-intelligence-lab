@@ -10,7 +10,7 @@ func MarkdownReport(assessment Assessment) string {
 	fmt.Fprintln(&report, "# Change Intelligence Report")
 	fmt.Fprintf(&report, "\n> Input source: %s\n", assessment.Source)
 	fmt.Fprintln(&report, "> This is a deterministic planning report. It does not claim that tests ran, passed, or establish release readiness.")
-	fmt.Fprintf(&report, "\n## Change\n\n- **ID:** `%s`\n- **Summary:** %s\n- **Time budget:** %d minutes\n- **Selected plan:** %d minutes\n", assessment.ChangeID, assessment.ChangeSummary, assessment.BudgetMinutes, assessment.SelectedMinutes)
+	fmt.Fprintf(&report, "\n## Change\n\n- **ID:** `%s`\n- **Summary:** %s\n- **Time budget:** %d minutes\n- **Selected plan:** %d minutes\n- **Selection method:** `%s`\n- **Selection note:** %s\n", assessment.ChangeID, assessment.ChangeSummary, assessment.BudgetMinutes, assessment.SelectedMinutes, assessment.SelectionMethod, assessment.SelectionNote)
 
 	fmt.Fprint(&report, "\n## Prioritized risks\n\n")
 	fmt.Fprintln(&report, "| ID | Component | Risk | Score | Decision basis |")
