@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+const exactOptimizationCandidateLimit = 20
+
 var criticalityWeights = map[string]int{
 	"low":    1,
 	"medium": 3,
@@ -26,35 +28,10 @@ var changeTypeWeights = map[string]int{
 // tests and it does not treat planned coverage as release approval.
 func Assess(change ChangeSet, catalog []TestCase) Assessment {
 	risks := buildRisks(change)
-	candidates := buildCandidates(change, risks, catalog)
-	sortCandidates(candidates)
-
-	selectedMinutes := 0
-	selected := make([]Recommendation, 0)
-	covered := make(map[string]bool)
-	for _, candidate := range candidates {
-		if selectedMinutes+candidate.EstimatedMinutes > change.Constraints.MaxEstimatedMinutes {
-			continue
-		}
-		benefit := 0
-		newRiskIDs := make([]string, 0, len(candidate.CoveredRiskIDs))
-		for _, riskID := range candidate.CoveredRiskIDs {
-			if !covered[riskID] {
-				benefit += riskScoreByID(risks, riskID)
-				newRiskIDs = append(newRiskIDs, riskID)
-			}
-		}
-		if benefit == 0 {
-			continue
-		}
-		candidate.Benefit = benefit
-		candidate.CoveredRiskIDs = newRiskIDs
-		selected = append(selected, candidate)
-		selectedMinutes += candidate.EstimatedMinutes
-		for _, riskID := range newRiskIDs {
-			covered[riskID] = true
-		}
-	}
+	candidates, catalogDecisions := buildCandidates(change, risks, catalog)
+	selectedIndexes, selectionMethod, selectionNote := selectPlan(candidates, risks, change.Constraints.MaxEstimatedMinutes)
+	selected, selectedMinutes, covered := materializeRecommendations(candidates, selectedIndexes, risks)
+	catalogDecisions = finalizeCatalogDecisions(catalogDecisions, candidates, selectedIndexes, selectionMethod)
 
 	deferred := make([]DeferredRisk, 0)
 	for _, risk := range risks {
@@ -73,11 +50,212 @@ func Assess(change ChangeSet, catalog []TestCase) Assessment {
 		Source:                change.Source,
 		BudgetMinutes:         change.Constraints.MaxEstimatedMinutes,
 		SelectedMinutes:       selectedMinutes,
+		SelectionMethod:       selectionMethod,
+		SelectionNote:         selectionNote,
 		Risks:                 risks,
 		Recommendations:       selected,
 		DeferredRisks:         deferred,
+		CatalogDecisions:      catalogDecisions,
 		ResidualRiskStatement: "A selected test plan demonstrates planned verification only. Test execution results, environment conditions, data quality, and untested interactions remain residual risk.",
 	}
+}
+
+// selectPlan chooses the maximum mapped risk score that fits inside the
+// supplied budget. The exact search is deliberately bounded so a large,
+// manually supplied catalog cannot make a local planning command unresponsive.
+// A transparent deterministic fallback is used beyond the bound.
+func selectPlan(candidates []Recommendation, risks []Risk, budget int) ([]int, string, string) {
+	if len(candidates) <= exactOptimizationCandidateLimit {
+		indexes := selectOptimalCandidateIndexes(candidates, risks, budget)
+		return indexes,
+			"exact-maximum-risk-coverage",
+			fmt.Sprintf("Exact optimization evaluated all valid combinations of %d mapped candidate(s).", len(candidates))
+	}
+
+	indexes := selectGreedyCandidateIndexes(candidates, risks, budget)
+	return indexes,
+		"deterministic-greedy-fallback",
+		fmt.Sprintf("The %d mapped candidates exceed the exact optimization limit of %d, so this report uses a deterministic greedy fallback.", len(candidates), exactOptimizationCandidateLimit)
+}
+
+type plan struct {
+	indexes []int
+	minutes int
+	score   int
+}
+
+func selectOptimalCandidateIndexes(candidates []Recommendation, risks []Risk, budget int) []int {
+	best := plan{indexes: []int{}}
+	searchOptimalPlan(candidates, risks, budget, 0, plan{indexes: []int{}}, &best)
+	return best.indexes
+}
+
+func searchOptimalPlan(candidates []Recommendation, risks []Risk, budget, index int, current plan, best *plan) {
+	if current.minutes > budget {
+		return
+	}
+	if index == len(candidates) {
+		current.score = planScore(candidates, risks, current.indexes)
+		if betterPlan(current, *best, candidates) {
+			*best = current
+		}
+		return
+	}
+
+	searchOptimalPlan(candidates, risks, budget, index+1, current, best)
+	withCandidate := plan{
+		indexes: append(append([]int{}, current.indexes...), index),
+		minutes: current.minutes + candidates[index].EstimatedMinutes,
+	}
+	searchOptimalPlan(candidates, risks, budget, index+1, withCandidate, best)
+}
+
+func betterPlan(candidate, current plan, candidates []Recommendation) bool {
+	if candidate.score != current.score {
+		return candidate.score > current.score
+	}
+	if candidate.minutes != current.minutes {
+		return candidate.minutes < current.minutes
+	}
+	return planKey(candidate.indexes, candidates) < planKey(current.indexes, candidates)
+}
+
+func planScore(candidates []Recommendation, risks []Risk, indexes []int) int {
+	covered := make(map[string]bool)
+	for _, index := range indexes {
+		for _, riskID := range candidates[index].CoveredRiskIDs {
+			covered[riskID] = true
+		}
+	}
+	total := 0
+	for riskID := range covered {
+		total += riskScoreByID(risks, riskID)
+	}
+	return total
+}
+
+func planKey(indexes []int, candidates []Recommendation) string {
+	ids := make([]string, 0, len(indexes))
+	for _, index := range indexes {
+		ids = append(ids, candidates[index].TestID)
+	}
+	sort.Strings(ids)
+	return strings.Join(ids, "\x00")
+}
+
+func selectGreedyCandidateIndexes(candidates []Recommendation, risks []Risk, budget int) []int {
+	remaining := make(map[int]bool, len(candidates))
+	for index := range candidates {
+		remaining[index] = true
+	}
+	covered := make(map[string]bool)
+	selected := make([]int, 0)
+	selectedMinutes := 0
+
+	for {
+		bestIndex := -1
+		bestBenefit := 0
+		for index := range remaining {
+			candidate := candidates[index]
+			if selectedMinutes+candidate.EstimatedMinutes > budget {
+				continue
+			}
+			benefit := uncoveredBenefit(candidate, risks, covered)
+			if benefit == 0 || !betterCandidate(index, bestIndex, benefit, bestBenefit, candidates) {
+				continue
+			}
+			bestIndex = index
+			bestBenefit = benefit
+		}
+		if bestIndex == -1 {
+			break
+		}
+
+		selected = append(selected, bestIndex)
+		selectedMinutes += candidates[bestIndex].EstimatedMinutes
+		for _, riskID := range candidates[bestIndex].CoveredRiskIDs {
+			covered[riskID] = true
+		}
+		delete(remaining, bestIndex)
+	}
+	return selected
+}
+
+func materializeRecommendations(candidates []Recommendation, indexes []int, risks []Risk) ([]Recommendation, int, map[string]bool) {
+	remaining := make(map[int]bool, len(indexes))
+	for _, index := range indexes {
+		remaining[index] = true
+	}
+	covered := make(map[string]bool)
+	selected := make([]Recommendation, 0, len(indexes))
+	selectedMinutes := 0
+
+	for len(remaining) > 0 {
+		bestIndex := -1
+		bestBenefit := 0
+		for index := range remaining {
+			benefit := uncoveredBenefit(candidates[index], risks, covered)
+			if betterCandidate(index, bestIndex, benefit, bestBenefit, candidates) {
+				bestIndex = index
+				bestBenefit = benefit
+			}
+		}
+
+		candidate := candidates[bestIndex]
+		newRiskIDs := uncoveredRiskIDs(candidate, covered)
+		candidate.Benefit = bestBenefit
+		candidate.CoveredRiskIDs = newRiskIDs
+		candidate.CoveredRiskTags = riskTagsForIDs(risks, newRiskIDs)
+		selected = append(selected, candidate)
+		selectedMinutes += candidate.EstimatedMinutes
+		for _, riskID := range newRiskIDs {
+			covered[riskID] = true
+		}
+		delete(remaining, bestIndex)
+	}
+	return selected, selectedMinutes, covered
+}
+
+func betterCandidate(index, bestIndex, benefit, bestBenefit int, candidates []Recommendation) bool {
+	if bestIndex == -1 {
+		return true
+	}
+	leftValue := benefit * candidates[bestIndex].EstimatedMinutes
+	rightValue := bestBenefit * candidates[index].EstimatedMinutes
+	if leftValue != rightValue {
+		return leftValue > rightValue
+	}
+	if benefit != bestBenefit {
+		return benefit > bestBenefit
+	}
+	return candidates[index].TestID < candidates[bestIndex].TestID
+}
+
+func uncoveredBenefit(candidate Recommendation, risks []Risk, covered map[string]bool) int {
+	return scoreForRiskIDs(risks, uncoveredRiskIDs(candidate, covered))
+}
+
+func uncoveredRiskIDs(candidate Recommendation, covered map[string]bool) []string {
+	newRiskIDs := make([]string, 0, len(candidate.CoveredRiskIDs))
+	for _, riskID := range candidate.CoveredRiskIDs {
+		if !covered[riskID] {
+			newRiskIDs = append(newRiskIDs, riskID)
+		}
+	}
+	return newRiskIDs
+}
+
+func riskTagsForIDs(risks []Risk, riskIDs []string) []string {
+	tags := make([]string, 0, len(riskIDs))
+	for _, riskID := range riskIDs {
+		for _, risk := range risks {
+			if risk.ID == riskID {
+				tags = appendUnique(tags, risk.Tag)
+				break
+			}
+		}
+	}
+	return tags
 }
 
 func buildRisks(change ChangeSet) []Risk {
@@ -104,11 +282,20 @@ func buildRisks(change ChangeSet) []Risk {
 	return risks
 }
 
-func buildCandidates(change ChangeSet, risks []Risk, catalog []TestCase) []Recommendation {
+func buildCandidates(change ChangeSet, risks []Risk, catalog []TestCase) ([]Recommendation, []CatalogDecision) {
 	allowedLevels := asSet(change.Constraints.AllowedLevels)
 	candidates := make([]Recommendation, 0)
+	decisions := make([]CatalogDecision, 0, len(catalog))
 	for _, testCase := range catalog {
+		decision := CatalogDecision{
+			TestID:           testCase.ID,
+			Level:            testCase.Level,
+			EstimatedMinutes: testCase.EstimatedMinutes,
+		}
 		if !allowedLevels[strings.ToLower(testCase.Level)] {
+			decision.Status = "excluded"
+			decision.Reason = fmt.Sprintf("Excluded because test level %q is not permitted by the supplied constraints.", testCase.Level)
+			decisions = append(decisions, decision)
 			continue
 		}
 
@@ -121,8 +308,15 @@ func buildCandidates(change ChangeSet, risks []Risk, catalog []TestCase) []Recom
 			}
 		}
 		if len(coveredRiskIDs) == 0 {
+			decision.Status = "excluded"
+			decision.Reason = "Excluded because it has no explicit component-keyword and risk-tag match to the declared change."
+			decisions = append(decisions, decision)
 			continue
 		}
+		decision.Status = "eligible"
+		decision.MappedRiskIDs = coveredRiskIDs
+		decision.Reason = "Eligible for selection because it has an explicit component-keyword and risk-tag match."
+		decisions = append(decisions, decision)
 		candidates = append(candidates, Recommendation{
 			TestID:           testCase.ID,
 			Level:            testCase.Level,
@@ -133,7 +327,58 @@ func buildCandidates(change ChangeSet, risks []Risk, catalog []TestCase) []Recom
 			Rationale:        testCase.Rationale,
 		})
 	}
-	return candidates
+	sort.Slice(candidates, func(left, right int) bool {
+		return candidates[left].TestID < candidates[right].TestID
+	})
+	sort.Slice(decisions, func(left, right int) bool {
+		return decisions[left].TestID < decisions[right].TestID
+	})
+	return candidates, decisions
+}
+
+func finalizeCatalogDecisions(decisions []CatalogDecision, candidates []Recommendation, selectedIndexes []int, selectionMethod string) []CatalogDecision {
+	selectedTestIDs := make(map[string]bool, len(selectedIndexes))
+	selectedRiskIDs := make(map[string]bool)
+	for _, index := range selectedIndexes {
+		candidate := candidates[index]
+		selectedTestIDs[candidate.TestID] = true
+		for _, riskID := range candidate.CoveredRiskIDs {
+			selectedRiskIDs[riskID] = true
+		}
+	}
+
+	for index := range decisions {
+		decision := &decisions[index]
+		if decision.Status != "eligible" {
+			continue
+		}
+		if selectedTestIDs[decision.TestID] {
+			decision.Status = "selected"
+			decision.Reason = fmt.Sprintf("Selected by %s within the supplied time budget.", selectionMethod)
+			continue
+		}
+		if allMappedRisksCovered(decision.MappedRiskIDs, selectedRiskIDs) {
+			decision.Status = "not-selected"
+			decision.Reason = "Not selected because its explicitly mapped risks are already addressed by the selected plan."
+			continue
+		}
+		decision.Status = "not-selected"
+		if selectionMethod == "exact-maximum-risk-coverage" {
+			decision.Reason = "Not selected by the maximum-risk plan after applying the supplied time budget and deterministic tie-break rules."
+			continue
+		}
+		decision.Reason = "Not selected by the deterministic greedy fallback after applying the supplied time budget."
+	}
+	return decisions
+}
+
+func allMappedRisksCovered(riskIDs []string, selectedRiskIDs map[string]bool) bool {
+	for _, riskID := range riskIDs {
+		if !selectedRiskIDs[riskID] {
+			return false
+		}
+	}
+	return len(riskIDs) > 0
 }
 
 func testMatchesRisk(testCase TestCase, risk Risk) bool {
@@ -156,27 +401,19 @@ func testMatchesRisk(testCase TestCase, risk Risk) bool {
 	return false
 }
 
-func sortCandidates(candidates []Recommendation) {
-	sort.Slice(candidates, func(left, right int) bool {
-		leftValue := candidates[left].Benefit * candidates[right].EstimatedMinutes
-		rightValue := candidates[right].Benefit * candidates[left].EstimatedMinutes
-		if leftValue == rightValue {
-			if candidates[left].Benefit == candidates[right].Benefit {
-				return candidates[left].TestID < candidates[right].TestID
-			}
-			return candidates[left].Benefit > candidates[right].Benefit
-		}
-		return leftValue > rightValue
-	})
-}
-
 func deferredReason(riskID string, candidates []Recommendation, remainingMinutes int) string {
+	minimumDuration := 0
 	for _, candidate := range candidates {
 		for _, coveredRiskID := range candidate.CoveredRiskIDs {
 			if coveredRiskID == riskID {
-				return fmt.Sprintf("matching planned test(s) exceed the remaining %d minute budget", remainingMinutes)
+				if minimumDuration == 0 || candidate.EstimatedMinutes < minimumDuration {
+					minimumDuration = candidate.EstimatedMinutes
+				}
 			}
 		}
+	}
+	if minimumDuration > 0 {
+		return fmt.Sprintf("the shortest matching planned test requires %d minutes, exceeding the %d minutes remaining after selected coverage", minimumDuration, remainingMinutes)
 	}
 	return "no matching test in the allowed catalog levels"
 }

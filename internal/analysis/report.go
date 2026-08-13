@@ -10,7 +10,7 @@ func MarkdownReport(assessment Assessment) string {
 	fmt.Fprintln(&report, "# Change Intelligence Report")
 	fmt.Fprintf(&report, "\n> Input source: %s\n", assessment.Source)
 	fmt.Fprintln(&report, "> This is a deterministic planning report. It does not claim that tests ran, passed, or establish release readiness.")
-	fmt.Fprintf(&report, "\n## Change\n\n- **ID:** `%s`\n- **Summary:** %s\n- **Time budget:** %d minutes\n- **Selected plan:** %d minutes\n", assessment.ChangeID, assessment.ChangeSummary, assessment.BudgetMinutes, assessment.SelectedMinutes)
+	fmt.Fprintf(&report, "\n## Change\n\n- **ID:** `%s`\n- **Summary:** %s\n- **Time budget:** %d minutes\n- **Selected plan:** %d minutes\n- **Selection method:** `%s`\n- **Selection note:** %s\n", assessment.ChangeID, assessment.ChangeSummary, assessment.BudgetMinutes, assessment.SelectedMinutes, assessment.SelectionMethod, assessment.SelectionNote)
 
 	fmt.Fprint(&report, "\n## Prioritized risks\n\n")
 	fmt.Fprintln(&report, "| ID | Component | Risk | Score | Decision basis |")
@@ -27,6 +27,21 @@ func MarkdownReport(assessment Assessment) string {
 		fmt.Fprintln(&report, "| --- | --- | ---: | --- | --- |")
 		for _, recommendation := range assessment.Recommendations {
 			fmt.Fprintf(&report, "| `%s` | %s | %d min | %s | %s |\n", recommendation.TestID, recommendation.Level, recommendation.EstimatedMinutes, strings.Join(recommendation.CoveredRiskIDs, ", "), recommendation.Rationale)
+		}
+	}
+
+	fmt.Fprint(&report, "\n## Decision trace for catalog entries\n\n")
+	if len(assessment.CatalogDecisions) == 0 {
+		fmt.Fprintln(&report, "No catalog entries were supplied.")
+	} else {
+		fmt.Fprintln(&report, "| Test | Level | Estimate | Status | Mapped risks | Decision reason |")
+		fmt.Fprintln(&report, "| --- | --- | ---: | --- | --- | --- |")
+		for _, decision := range assessment.CatalogDecisions {
+			mappedRisks := "—"
+			if len(decision.MappedRiskIDs) > 0 {
+				mappedRisks = strings.Join(decision.MappedRiskIDs, ", ")
+			}
+			fmt.Fprintf(&report, "| `%s` | %s | %d min | %s | %s | %s |\n", decision.TestID, decision.Level, decision.EstimatedMinutes, decision.Status, mappedRisks, decision.Reason)
 		}
 	}
 

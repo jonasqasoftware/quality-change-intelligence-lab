@@ -58,14 +58,28 @@ type DeferredRisk struct {
 	Reason string `json:"reason"`
 }
 
+// CatalogDecision records how a catalog entry was handled by the planning
+// model. It is planning traceability, not test-execution evidence.
+type CatalogDecision struct {
+	TestID           string   `json:"testId"`
+	Level            string   `json:"level"`
+	EstimatedMinutes int      `json:"estimatedMinutes"`
+	Status           string   `json:"status"`
+	MappedRiskIDs    []string `json:"mappedRiskIds"`
+	Reason           string   `json:"reason"`
+}
+
 type Assessment struct {
-	ChangeID              string           `json:"changeId"`
-	ChangeSummary         string           `json:"changeSummary"`
-	Source                string           `json:"source"`
-	BudgetMinutes         int              `json:"budgetMinutes"`
-	SelectedMinutes       int              `json:"selectedMinutes"`
-	Risks                 []Risk           `json:"risks"`
-	Recommendations       []Recommendation `json:"recommendations"`
-	DeferredRisks         []DeferredRisk   `json:"deferredRisks"`
-	ResidualRiskStatement string           `json:"residualRiskStatement"`
+	ChangeID              string            `json:"changeId"`
+	ChangeSummary         string            `json:"changeSummary"`
+	Source                string            `json:"source"`
+	BudgetMinutes         int               `json:"budgetMinutes"`
+	SelectedMinutes       int               `json:"selectedMinutes"`
+	SelectionMethod       string            `json:"selectionMethod"`
+	SelectionNote         string            `json:"selectionNote"`
+	Risks                 []Risk            `json:"risks"`
+	Recommendations       []Recommendation  `json:"recommendations"`
+	DeferredRisks         []DeferredRisk    `json:"deferredRisks"`
+	CatalogDecisions      []CatalogDecision `json:"catalogDecisions"`
+	ResidualRiskStatement string            `json:"residualRiskStatement"`
 }

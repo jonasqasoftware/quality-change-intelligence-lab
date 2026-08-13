@@ -10,7 +10,8 @@ When a change arrives, running every test can be slow and uninformative; relying
 
 - component criticality and change type define a transparent risk score;
 - a test must match both a component keyword and a declared risk tag;
-- a supplied time budget constrains the selected plan;
+- a supplied time budget constrains a maximum-risk test plan rather than a static first-match list;
+- every catalog entry receives a traceable planning decision: selected, not selected, or excluded by an explicit constraint;
 - deferred checks are recorded as residual risk rather than hidden.
 
 The project complements [QuickMetrics](https://github.com/jonasqasoftware/quickmetrics-project): QuickMetrics explains test-run signals after execution, while this lab explains why particular verification should be prioritized before execution.
@@ -41,7 +42,7 @@ go run ./cmd/qci \
 
 ## Example decision
 
-The synthetic fixture describes a high-criticality payment authorization logic change and a medium-criticality checkout UI change. With an 18-minute planning budget, the tool selects mapped checks that address authorization, financial integrity, input validation, and accessibility. The generated report still states that results, environments, test data, and unmapped interactions remain residual risk.
+The synthetic fixture describes a high-criticality payment authorization logic change and a medium-criticality checkout UI change. With an 18-minute planning budget, the tool selects the combination of mapped checks with the greatest total risk score. The report identifies whether it used exact optimization or the documented large-catalog fallback, and still states that results, environments, test data, and unmapped interactions remain residual risk.
 
 ## Quality Strategy
 
@@ -78,6 +79,7 @@ The project uses the Go standard library to keep the decision logic easy to insp
 - It does not inspect a real pull-request diff, test-management system, or CI provider.
 - Risk tags, component keywords, estimates, and criticality are declared inputs requiring human review.
 - A catalog entry means a proposed check, not an implemented or passing test.
+- Exact maximum-risk selection is limited to 20 mapped catalog candidates; larger inputs use a labelled deterministic greedy fallback.
 - The selected plan is not a release approval, coverage metric, or predictive reliability score.
 
 ## Project structure
