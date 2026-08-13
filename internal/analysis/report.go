@@ -30,6 +30,21 @@ func MarkdownReport(assessment Assessment) string {
 		}
 	}
 
+	fmt.Fprint(&report, "\n## Decision trace for catalog entries\n\n")
+	if len(assessment.CatalogDecisions) == 0 {
+		fmt.Fprintln(&report, "No catalog entries were supplied.")
+	} else {
+		fmt.Fprintln(&report, "| Test | Level | Estimate | Status | Mapped risks | Decision reason |")
+		fmt.Fprintln(&report, "| --- | --- | ---: | --- | --- | --- |")
+		for _, decision := range assessment.CatalogDecisions {
+			mappedRisks := "—"
+			if len(decision.MappedRiskIDs) > 0 {
+				mappedRisks = strings.Join(decision.MappedRiskIDs, ", ")
+			}
+			fmt.Fprintf(&report, "| `%s` | %s | %d min | %s | %s | %s |\n", decision.TestID, decision.Level, decision.EstimatedMinutes, decision.Status, mappedRisks, decision.Reason)
+		}
+	}
+
 	fmt.Fprint(&report, "\n## Deferred risks and residual risk\n\n")
 	if len(assessment.DeferredRisks) == 0 {
 		fmt.Fprintln(&report, "All catalog-mapped risks fit inside the selected plan. This is not proof that all change risk is covered.")

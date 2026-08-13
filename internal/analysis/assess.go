@@ -28,9 +28,10 @@ var changeTypeWeights = map[string]int{
 // tests and it does not treat planned coverage as release approval.
 func Assess(change ChangeSet, catalog []TestCase) Assessment {
 	risks := buildRisks(change)
-	candidates := buildCandidates(change, risks, catalog)
+	candidates, catalogDecisions := buildCandidates(change, risks, catalog)
 	selectedIndexes, selectionMethod, selectionNote := selectPlan(candidates, risks, change.Constraints.MaxEstimatedMinutes)
 	selected, selectedMinutes, covered := materializeRecommendations(candidates, selectedIndexes, risks)
+	catalogDecisions = finalizeCatalogDecisions(catalogDecisions, candidates, selectedIndexes, selectionMethod)
 
 	deferred := make([]DeferredRisk, 0)
 	for _, risk := range risks {
@@ -54,6 +55,7 @@ func Assess(change ChangeSet, catalog []TestCase) Assessment {
 		Risks:                 risks,
 		Recommendations:       selected,
 		DeferredRisks:         deferred,
+		CatalogDecisions:      catalogDecisions,
 		ResidualRiskStatement: "A selected test plan demonstrates planned verification only. Test execution results, environment conditions, data quality, and untested interactions remain residual risk.",
 	}
 }
@@ -280,11 +282,20 @@ func buildRisks(change ChangeSet) []Risk {
 	return risks
 }
 
-func buildCandidates(change ChangeSet, risks []Risk, catalog []TestCase) []Recommendation {
+func buildCandidates(change ChangeSet, risks []Risk, catalog []TestCase) ([]Recommendation, []CatalogDecision) {
 	allowedLevels := asSet(change.Constraints.AllowedLevels)
 	candidates := make([]Recommendation, 0)
+	decisions := make([]CatalogDecision, 0, len(catalog))
 	for _, testCase := range catalog {
+		decision := CatalogDecision{
+			TestID:           testCase.ID,
+			Level:            testCase.Level,
+			EstimatedMinutes: testCase.EstimatedMinutes,
+		}
 		if !allowedLevels[strings.ToLower(testCase.Level)] {
+			decision.Status = "excluded"
+			decision.Reason = fmt.Sprintf("Excluded because test level %q is not permitted by the supplied constraints.", testCase.Level)
+			decisions = append(decisions, decision)
 			continue
 		}
 
@@ -297,8 +308,15 @@ func buildCandidates(change ChangeSet, risks []Risk, catalog []TestCase) []Recom
 			}
 		}
 		if len(coveredRiskIDs) == 0 {
+			decision.Status = "excluded"
+			decision.Reason = "Excluded because it has no explicit component-keyword and risk-tag match to the declared change."
+			decisions = append(decisions, decision)
 			continue
 		}
+		decision.Status = "eligible"
+		decision.MappedRiskIDs = coveredRiskIDs
+		decision.Reason = "Eligible for selection because it has an explicit component-keyword and risk-tag match."
+		decisions = append(decisions, decision)
 		candidates = append(candidates, Recommendation{
 			TestID:           testCase.ID,
 			Level:            testCase.Level,
@@ -312,7 +330,55 @@ func buildCandidates(change ChangeSet, risks []Risk, catalog []TestCase) []Recom
 	sort.Slice(candidates, func(left, right int) bool {
 		return candidates[left].TestID < candidates[right].TestID
 	})
-	return candidates
+	sort.Slice(decisions, func(left, right int) bool {
+		return decisions[left].TestID < decisions[right].TestID
+	})
+	return candidates, decisions
+}
+
+func finalizeCatalogDecisions(decisions []CatalogDecision, candidates []Recommendation, selectedIndexes []int, selectionMethod string) []CatalogDecision {
+	selectedTestIDs := make(map[string]bool, len(selectedIndexes))
+	selectedRiskIDs := make(map[string]bool)
+	for _, index := range selectedIndexes {
+		candidate := candidates[index]
+		selectedTestIDs[candidate.TestID] = true
+		for _, riskID := range candidate.CoveredRiskIDs {
+			selectedRiskIDs[riskID] = true
+		}
+	}
+
+	for index := range decisions {
+		decision := &decisions[index]
+		if decision.Status != "eligible" {
+			continue
+		}
+		if selectedTestIDs[decision.TestID] {
+			decision.Status = "selected"
+			decision.Reason = fmt.Sprintf("Selected by %s within the supplied time budget.", selectionMethod)
+			continue
+		}
+		if allMappedRisksCovered(decision.MappedRiskIDs, selectedRiskIDs) {
+			decision.Status = "not-selected"
+			decision.Reason = "Not selected because its explicitly mapped risks are already addressed by the selected plan."
+			continue
+		}
+		decision.Status = "not-selected"
+		if selectionMethod == "exact-maximum-risk-coverage" {
+			decision.Reason = "Not selected by the maximum-risk plan after applying the supplied time budget and deterministic tie-break rules."
+			continue
+		}
+		decision.Reason = "Not selected by the deterministic greedy fallback after applying the supplied time budget."
+	}
+	return decisions
+}
+
+func allMappedRisksCovered(riskIDs []string, selectedRiskIDs map[string]bool) bool {
+	for _, riskID := range riskIDs {
+		if !selectedRiskIDs[riskID] {
+			return false
+		}
+	}
+	return len(riskIDs) > 0
 }
 
 func testMatchesRisk(testCase TestCase, risk Risk) bool {

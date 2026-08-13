@@ -11,6 +11,7 @@ When a change arrives, running every test can be slow and uninformative; relying
 - component criticality and change type define a transparent risk score;
 - a test must match both a component keyword and a declared risk tag;
 - a supplied time budget constrains a maximum-risk test plan rather than a static first-match list;
+- every catalog entry receives a traceable planning decision: selected, not selected, or excluded by an explicit constraint;
 - deferred checks are recorded as residual risk rather than hidden.
 
 The project complements [QuickMetrics](https://github.com/jonasqasoftware/quickmetrics-project): QuickMetrics explains test-run signals after execution, while this lab explains why particular verification should be prioritized before execution.

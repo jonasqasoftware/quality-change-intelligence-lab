@@ -13,6 +13,7 @@ Quality Change Intelligence Lab is a local planning tool that turns an explicit 
 | Hidden prioritization rules | Teams cannot challenge a black-box recommendation. | Criticality and change-type weights are visible in code and documented. |
 | Incorrect catalog mapping | A test can be selected for the wrong component or risk. | Matching requires both a component keyword and an exact risk tag. |
 | Budget hides material risk | A short test window can defer an important check. | Exact maximum-risk selection is used for small catalogs; deferred risks are emitted with an explicit reason. |
+| Opaque catalog omissions | Reviewers cannot tell why an available check was not proposed. | The report records a decision trace for every catalog entry: selected, not selected, or excluded. |
 | Planning treated as proof | A selected test is mistaken for a passing result. | Every report states its evidence boundary and residual risk. |
 
 ## Strategy and test levels

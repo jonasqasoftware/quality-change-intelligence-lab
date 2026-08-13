@@ -69,6 +69,9 @@ func TestAssessSelectsHighestValuePlanWithinBudget(t *testing.T) {
 	if assessment.SelectionMethod != "exact-maximum-risk-coverage" {
 		t.Fatalf("selection method = %q", assessment.SelectionMethod)
 	}
+	assertCatalogDecision(t, assessment.CatalogDecisions, "unit-payment", "selected")
+	assertCatalogDecision(t, assessment.CatalogDecisions, "a11y-checkout", "selected")
+	assertCatalogDecision(t, assessment.CatalogDecisions, "api-payment", "not-selected")
 }
 
 func TestAssessFindsBestCombinationInsteadOfGreedyFirstChoice(t *testing.T) {
@@ -160,6 +163,7 @@ func TestAssessDefersRiskWithoutMatchingAllowedTest(t *testing.T) {
 	if got := assessment.DeferredRisks[0].Reason; got != "no matching test in the allowed catalog levels" {
 		t.Fatalf("deferred reason = %q", got)
 	}
+	assertCatalogDecision(t, assessment.CatalogDecisions, "api-migration", "excluded")
 }
 
 func TestMarkdownReportStatesItsLimits(t *testing.T) {
@@ -173,12 +177,34 @@ func TestMarkdownReportStatesItsLimits(t *testing.T) {
 		ResidualRiskStatement: "Planning is not proof.",
 	}
 
+	assessment.CatalogDecisions = []CatalogDecision{{
+		TestID:           "unit-payment",
+		Level:            "unit",
+		EstimatedMinutes: 3,
+		Status:           "selected",
+		MappedRiskIDs:    []string{"R-01"},
+		Reason:           "Selected by exact-maximum-risk-coverage within the supplied time budget.",
+	}}
+
 	report := MarkdownReport(assessment)
-	for _, expected := range []string{"does not claim that tests ran", "## Limits", "Planning is not proof.", "exact-maximum-risk-coverage"} {
+	for _, expected := range []string{"does not claim that tests ran", "## Limits", "Planning is not proof.", "exact-maximum-risk-coverage", "## Decision trace for catalog entries", "unit-payment"} {
 		if !strings.Contains(report, expected) {
 			t.Fatalf("report does not contain %q:\n%s", expected, report)
 		}
 	}
+}
+
+func assertCatalogDecision(t *testing.T, decisions []CatalogDecision, testID, status string) {
+	t.Helper()
+	for _, decision := range decisions {
+		if decision.TestID == testID {
+			if decision.Status != status {
+				t.Fatalf("catalog decision for %q = %q, want %q", testID, decision.Status, status)
+			}
+			return
+		}
+	}
+	t.Fatalf("no catalog decision found for %q", testID)
 }
 
 func containsAll(values []string, expected ...string) bool {

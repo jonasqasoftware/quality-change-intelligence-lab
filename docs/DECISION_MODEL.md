@@ -38,3 +38,13 @@ For a catalog of up to 20 mapped candidates, the tool evaluates every combinatio
 This exact search is intentionally bounded to protect local execution. Larger mapped catalogs use a deterministic greedy fallback, labelled `deterministic-greedy-fallback` in the report. The fallback repeatedly chooses the largest currently uncovered risk score per estimated minute; it is a transparent approximation, not an optimality claim.
 
 The report makes deferred risks explicit when no mapped test is permitted, or when mapped tests cannot fit in the remaining budget. It intentionally does not calculate coverage percentages: planned mapping should not be presented as confidence or release readiness.
+
+## Decision trace
+
+For every catalog entry, the report records one of three planning states:
+
+- `selected`: included in the plan that fits the budget;
+- `not-selected`: eligible but omitted because the selected plan covers its mapped risks already or is preferred by the documented selection rule;
+- `excluded`: outside the allowed test levels or lacking an explicit component-keyword and risk-tag match.
+
+The trace explains a planning decision only. It does not imply that a test exists, was executed, or passed.
