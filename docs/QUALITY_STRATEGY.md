@@ -1,43 +1,51 @@
-# Quality Strategy
+# Estratégia de Qualidade
 
-## Context
+## Contexto
 
-Teams often react to code changes by either running every available check or relying on intuition. Both approaches obscure the decision: the first can be slow and noisy; the second can omit a high-impact risk.
+Diante de uma mudança, times costumam reagir de duas formas: rodar todo o conjunto de testes disponível, ou confiar na intuição de quem revisa. As duas escondem a decisão: a primeira pode ser lenta e ruidosa; a segunda pode deixar passar um risco de alto impacto sem que ninguém consiga questionar por quê.
 
-Quality Change Intelligence Lab is a local planning tool that turns an explicit change description and a declared test catalog into a deterministic, reviewable test recommendation. The included fixtures are synthetic. They are not a record of a real product change, a release gate, or production test evidence.
+Quality Change Intelligence Lab é uma ferramenta local que transforma uma descrição de mudança e um catálogo de testes declarados em uma recomendação determinística e revisável. Os fixtures incluídos são sintéticos. Eles não são um registro de uma mudança real de produto, um gate de release, nem evidência de teste em produção.
 
-## Primary risks
+## Riscos principais
 
-| Risk | Why it matters | Mitigation in this lab |
+| Risco | Por que importa | Mitigação nesta ferramenta |
 | --- | --- | --- |
-| Hidden prioritization rules | Teams cannot challenge a black-box recommendation. | Criticality and change-type weights are visible in code and documented. |
-| Incorrect catalog mapping | A test can be selected for the wrong component or risk. | Matching requires both a component keyword and an exact risk tag. |
-| Budget hides material risk | A short test window can defer an important check. | Exact maximum-risk selection is used for small catalogs; deferred risks are emitted with an explicit reason. |
-| Opaque catalog omissions | Reviewers cannot tell why an available check was not proposed. | The report records a decision trace for every catalog entry: selected, not selected, or excluded. |
-| Planning treated as proof | A selected test is mistaken for a passing result. | Every report states its evidence boundary and residual risk. |
+| Regras de priorização ocultas | Um time não consegue contestar uma recomendação de caixa-preta. | Os pesos de criticidade e tipo de mudança são visíveis no código e documentados em [Modelo de Decisão](DECISION_MODEL.md). |
+| Mapeamento incorreto no catálogo | Um teste pode ser selecionado para o componente ou risco errado. | A correspondência exige palavra-chave de componente **e** tag de risco explícita ao mesmo tempo. |
+| Orçamento escondendo risco relevante | Uma janela de tempo curta pode adiar uma verificação importante. | Para catálogos pequenos, a seleção é exata (maximiza o risco contemplado pelo plano); riscos adiados são sempre listados com o motivo. |
+| Omissões opacas do catálogo | Quem revisa não consegue saber por que um teste disponível não foi proposto. | O relatório registra uma decisão para cada item do catálogo: selecionado, não selecionado, ou excluído. |
+| Planejamento confundido com prova | Um teste selecionado é confundido com um resultado aprovado. | Todo relatório declara seu limite de evidência e o risco residual. |
 
-## Strategy and test levels
+## Estratégia e níveis de teste
 
-| Level | Purpose | Evidence produced |
+| Nível | Propósito | Evidência produzida |
 | --- | --- | --- |
-| Unit | Validate weight, matching, exact-combination selection, budget, fallback behavior, and residual-risk rules. | Deterministic Go test results. |
-| Integration | Load strict JSON input and render Markdown/JSON reports through the CLI boundary. | CLI output from synthetic fixtures. |
-| Workflow | Format, vet, race-test, build, generate a sample report, and upload it as a CI artifact. | A GitHub Actions artifact tied to a workflow run. |
+| Unitário | Validar peso de risco, correspondência, seleção por combinação exata, orçamento e comportamento do fallback. | Resultados determinísticos dos testes em Go. |
+| Integração | Carregar entrada JSON estrita e renderizar relatórios em Markdown/JSON pelo CLI. | Saída do CLI a partir dos fixtures sintéticos. |
+| Workflow | Formatar, vetar, testar com detecção de race condition, compilar e gerar um relatório de exemplo como artefato de CI. | Artefato do GitHub Actions vinculado a uma execução do workflow. |
 
-## Decision criteria
+## Critérios de decisão
 
-A recommendation is selected only when it:
+Uma recomendação só é selecionada quando ela:
 
-1. belongs to an allowed test level;
-2. matches both the changed component and the stated risk tag;
-3. adds previously uncovered risk; and
-4. fits within the supplied time budget.
+1. pertence a um nível de teste permitido;
+2. corresponde tanto ao componente alterado quanto à tag de risco declarada;
+3. adiciona risco ainda não contemplado pelo plano; e
+4. cabe no orçamento de tempo fornecido.
 
-For up to 20 mapped candidates, the tool evaluates every valid combination and selects the highest total mapped risk score. Ties favor the lower estimated duration, then stable test ID ordering. Larger catalogs use a labelled deterministic greedy fallback based on currently uncovered risk score per estimated minute. The scoring model is a transparent heuristic for discussion, not a universal release formula.
+O algoritmo de seleção — limite de candidatos para busca exata, regra de desempate e fallback guloso para catálogos maiores — está detalhado em [Modelo de Decisão](DECISION_MODEL.md). O modelo de pontuação é uma heurística transparente para apoiar discussão, não uma fórmula universal de release.
 
-## Residual risks and limits
+## Critérios de sucesso da estratégia
 
-- Inputs are manually declared; this lab does not parse a real Git diff or connect to issue trackers.
-- The catalog is a planning model. It does not prove test implementation, execution, or pass status.
-- Estimates, component keywords, criticality, and risk tags need human review.
-- A report should inform a quality decision alongside execution results, product context, and known incidents; it must not replace them.
+- Toda recomendação selecionada corresponde a um risco mapeado por palavra-chave de componente e tag de risco — verificável pelos testes unitários de correspondência.
+- O mesmo change-set e catálogo sempre produzem o mesmo plano — determinismo verificável por execução repetida.
+- Todo item do catálogo aparece no relatório com um status e um motivo (`selected`, `not-selected` ou `excluded`); nenhum item fica sem rastro.
+- Todo risco não contemplado pelo plano aparece na lista de riscos adiados, com o motivo do adiamento.
+- Os quality gates (`gofmt`, `go vet`, `go test -race`, `go build`) passam antes de qualquer alteração ser considerada íntegra.
+
+## Riscos residuais e limites
+
+- As entradas são declaradas manualmente; esta ferramenta não interpreta um diff real do Git nem se conecta a rastreadores de issues.
+- O catálogo é um modelo de planejamento. Ele não prova implementação, execução ou aprovação de um teste.
+- Estimativas, palavras-chave de componente, criticidade e tags de risco exigem revisão humana.
+- Um relatório é insumo de planejamento para uma decisão de qualidade, não a decisão em si; deve ser interpretado junto com resultados de execução, contexto de produto e incidentes conhecidos, nunca isoladamente.

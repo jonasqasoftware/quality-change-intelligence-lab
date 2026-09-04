@@ -1,50 +1,64 @@
-# Decision Model
+# Modelo de Decisão
 
-## Inputs
+Este documento descreve, em detalhe, as regras que o CLI aplica para transformar um change-set e um catálogo de testes em um plano priorizado. O contrato completo de campos está em [Formato das Entradas](FORMATO-DAS-ENTRADAS.md); aqui o foco é a lógica de pontuação e seleção.
 
-The CLI reads two strict JSON files:
+## Entradas
 
-- a **change set**: identifier, summary, declared input source, changed components, criticality, change type, risk tags, and constraints;
-- a **test catalog**: proposed checks, levels, estimates, component keywords, covered risk tags, and rationale.
+O CLI lê dois arquivos JSON estritos:
 
-Unknown JSON fields are rejected. This makes accidental contract drift visible rather than silently changing a recommendation.
+- um **change-set**: identificador, resumo, origem declarada, componentes alterados, criticidade, tipo de mudança, tags de risco e restrições;
+- um **catálogo de testes**: verificações propostas, nível, estimativa, palavras-chave de componente, tags de risco que declara contemplar e justificativa.
 
-## Scoring
+Campos JSON desconhecidos são rejeitados. Isso torna visível qualquer divergência acidental do contrato, em vez de deixá-la mudar uma recomendação silenciosamente.
 
-Each component-risk pair receives:
+## Pontuação de risco
+
+Cada par componente/tag de risco recebe:
 
 ```text
-risk score = criticality weight + change-type weight
+pontuação do risco = peso da criticidade + peso do tipo de mudança
 ```
 
-| Criticality | Weight | Change type | Weight |
+| Criticidade | Peso | Tipo de mudança | Peso |
 | --- | ---: | --- | ---: |
 | low | 1 | config | 2 |
 | medium | 3 | ui | 2 |
 | high | 5 | logic | 4 |
-|  |  | dependency | 4 |
-|  |  | api-contract | 5 |
-|  |  | data-migration | 5 |
-|  |  | security | 5 |
+| | | dependency | 4 |
+| | | api-contract | 5 |
+| | | data-migration | 5 |
+| | | security | 5 |
 
-The score represents a prioritization hypothesis, not impact observed in production.
+A pontuação representa uma hipótese de priorização, não um impacto observado em produção. Os pesos usados para calculá-la são escolhas deste laboratório, feitas para tornar essa hipótese explícita e reproduzível — não um padrão universal, nem uma probabilidade estatística de defeito, um impacto financeiro observado ou uma escala validada pelo setor.
 
-## Selection
+## O que a pontuação significa
 
-A test candidate maps to a risk only if a declared component keyword appears in that component's name or path **and** the candidate explicitly covers the same risk tag.
+A pontuação serve apenas para ordenar e priorizar candidatos dentro deste modelo. Ela não representa:
 
-For a catalog of up to 20 mapped candidates, the tool evaluates every combination that fits the supplied budget and selects the plan with the greatest total mapped risk score. If plans tie, it selects the lower-estimated-duration plan, then uses test IDs as a stable final tie-breaker. The report labels this method `exact-maximum-risk-coverage`.
+- probabilidade estatística de defeito;
+- severidade observada em produção;
+- impacto financeiro previsto;
+- porcentagem de cobertura;
+- confiança ou prontidão de release.
 
-This exact search is intentionally bounded to protect local execution. Larger mapped catalogs use a deterministic greedy fallback, labelled `deterministic-greedy-fallback` in the report. The fallback repeatedly chooses the largest currently uncovered risk score per estimated minute; it is a transparent approximation, not an optimality claim.
+## Correspondência entre teste e risco
 
-The report makes deferred risks explicit when no mapped test is permitted, or when mapped tests cannot fit in the remaining budget. It intentionally does not calculate coverage percentages: planned mapping should not be presented as confidence or release readiness.
+Um teste do catálogo só é elegível para se associar a um risco quando, ao mesmo tempo: (1) uma de suas `componentKeywords` aparece como substring em `nome do componente + caminho do componente`, e (2) uma de suas `coversRiskTags` é igual a uma `riskTag` daquele componente. Ambas as comparações ignoram maiúsculas/minúsculas. Um teste cujo `level` não está em `allowedLevels` é sempre excluído, mesmo que esteja associado a um risco mapeado.
 
-## Decision trace
+## Seleção do plano
 
-For every catalog entry, the report records one of three planning states:
+Para um catálogo de até **20 candidatos mapeados** (testes associados a ao menos um risco e cujo nível é permitido), o CLI avalia todas as combinações possíveis que cabem no orçamento e escolhe a de maior pontuação total de risco contemplado pelo plano. Em caso de empate, prevalece o plano com menor tempo total; se ainda houver empate, um critério de desempate determinístico baseado nos IDs dos testes decide o resultado — o mesmo change-set e catálogo sempre produzem o mesmo plano. O relatório rotula este método como `exact-maximum-risk-coverage`.
 
-- `selected`: included in the plan that fits the budget;
-- `not-selected`: eligible but omitted because the selected plan covers its mapped risks already or is preferred by the documented selection rule;
-- `excluded`: outside the allowed test levels or lacking an explicit component-keyword and risk-tag match.
+Essa busca exata é deliberadamente limitada para proteger a execução local: sua complexidade cresce exponencialmente com o número de candidatos. Catálogos mapeados maiores usam um método guloso determinístico, rotulado `deterministic-greedy-fallback` no relatório. Ele escolhe repetidamente, entre os testes que ainda cabem no tempo restante, o que tem a maior razão entre risco ainda não contemplado pelo plano e minutos estimados — desempatando por ID de teste. É uma aproximação transparente, não uma garantia de otimalidade.
 
-The trace explains a planning decision only. It does not imply that a test exists, was executed, or passed.
+O relatório torna explícitos os riscos adiados quando nenhum teste permitido está associado a eles, ou quando os testes associados a eles não cabem no orçamento restante. Deliberadamente, ele não calcula uma porcentagem de cobertura: um mapeamento planejado não deve ser apresentado como confiança ou como prontidão para release.
+
+## Rastro de decisão
+
+Para cada item do catálogo, o relatório registra um destes três estados de planejamento:
+
+- `selected`: incluído no plano que coube no orçamento;
+- `not-selected`: elegível, mas fora do plano porque o plano escolhido já contempla seus riscos mapeados, ou porque a regra de seleção documentada preferiu outro conjunto de testes;
+- `excluded`: fora dos níveis de teste permitidos, ou sem uma correspondência explícita de palavra-chave de componente e tag de risco.
+
+O rastro explica apenas uma decisão de planejamento. Ele não implica que um teste exista, tenha sido executado ou tenha passado.
