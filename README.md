@@ -1,5 +1,13 @@
 # Quality Change Intelligence Lab
 
+<p align="center">
+  <img src="docs/brand/social-preview.png" alt="Jonas Davila: engenharia de qualidade com evidência, clareza e método" width="100%">
+</p>
+
+[![CI](https://github.com/jonasqasoftware/quality-change-intelligence-lab/actions/workflows/quality.yml/badge.svg)](https://github.com/jonasqasoftware/quality-change-intelligence-lab/actions/workflows/quality.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-1e2024.svg)](LICENSE) [![Jonas Davila](https://img.shields.io/badge/portfolio-jonasdavila.com.br-a8432f.svg)](https://jonasdavila.com.br/en/)
+
+> **In English:** A Go CLI for risk-based test planning. Given a described change, candidate checks and a time budget, it selects the checks that cover the most risk and reports what was left out. It plans; it does not execute.
+
 Ferramenta de Quality Engineering para priorizar verificações antes da execução, considerando riscos declarados e um orçamento de tempo. O resultado deixa explícito o que foi priorizado, o que ficou de fora e quais riscos continuam sem verificação.
 
 > Os exemplos deste repositório são fixtures sintéticos, criados para este laboratório — não são evidência de produção, dados de cliente, nem o registro de um release real.
